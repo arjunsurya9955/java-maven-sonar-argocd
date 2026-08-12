@@ -10,78 +10,47 @@ pipeline {
 
         stage('Checkout') {
             steps {
-                echo 'Starting Checkout...'
-                sh 'pwd'
-                sh 'ls -la'
+                sh 'echo passed'
+                // git branch: 'main', url: 'https://github.com/user/repo.git'
             }
         }
 
         stage('Build and Test') {
             steps {
-                echo 'Building Spring Boot application...'
-
-                sh '''
-                    set -e
-                    cd spring-boot-app
-                    echo "Current directory:"
-                    pwd
-                    echo "Files:"
-                    ls -la
-
-                    echo "Running Maven build..."
-                    mvn clean package
-                '''
+                sh 'ls -ltr'
+                sh 'cd spring-boot-app && mvn clean package'
             }
         }
 
-        stage('SonarQube Analysis') {
-            steps {
-                echo 'Running SonarQube analysis...'
-
-                withSonarQubeEnv('sonarqube') {
-                    sh '''
-                        set -e
-
-                        cd spring-boot-app
-
-                        mvn org.sonarsource.scanner.maven:sonar-maven-plugin:5.1.0.4751:sonar \
-                          -Dsonar.projectKey=my-ec2-project \
-                          -Dsonar.projectName="Spring Boot App" \
-                          -Dsonar.host.url=$SONAR_HOST_URL
-                    '''
-                }
-            }
-        }
+              stage('SonarQube Analysis') {
+                steps {
+                  withSonarQubeEnv('sonarqube') {
+                      sh '''
+                          cd spring-boot-app
+                          mvn org.sonarsource.scanner.maven:sonar-maven-plugin:5.1.0.4751:sonar \
+                            -Dsonar.projectKey=my-ec2-project \
+                            -Dsonar.projectName="Spring Boot App" \
+                            -Dsonar.host.url=$SONAR_HOST_URL
+                      '''
+                  }
+              }
+          }
 
         stage('Build and Push Docker Image') {
             environment {
                 DOCKER_IMAGE = "arjunsurya27/spring-boot-app:${BUILD_NUMBER}"
+                REGISTRY_CREDENTIALS = credentials('docker-cred')
             }
 
             steps {
                 script {
-
-                    echo "Building Docker image: ${DOCKER_IMAGE}"
-
-                    sh '''
-                        cd spring-boot-app
-
-                        docker --version
-
-                        docker build \
-                          -t ${DOCKER_IMAGE} .
-                    '''
-
-                    echo "Pushing Docker image..."
+                    sh 'cd spring-boot-app && docker build -t ${DOCKER_IMAGE} .'
 
                     def dockerImage = docker.image("${DOCKER_IMAGE}")
 
-                    docker.withRegistry(
-                        'https://index.docker.io/v1/',
-                        'docker-cred'
-                    ) {
+                    docker.withRegistry('https://index.docker.io/v1/', "docker-cred") {
                         dockerImage.push()
-                        dockerImage.push('latest')
+                        dockerImage.push("latest")
                     }
                 }
             }
@@ -101,52 +70,21 @@ pipeline {
                         passwordVariable: 'GITHUB_TOKEN'
                     )
                 ]) {
-
                     sh '''
-                        set -e
-
-                        echo "Checking workspace..."
-                        pwd
-                        ls -la
-
-                        echo "Checking deployment file..."
-                        ls -la spring-boot-app-manifests/
-
+                        git config --global --add safe.directory /var/lib/jenkins/workspace/jenkins-maven-sonar-pipeline
+                        
                         git config user.email "arjunsurya027@gmail.com"
                         git config user.name "${GIT_USER_NAME}"
 
-                        echo "Updating Kubernetes image..."
-
-                        sed -i "s|image: .*|image: arjunsurya27/spring-boot-app:${BUILD_NUMBER}|g" \
-                        spring-boot-app-manifests/deployment.yml
-
-                        echo "Updated deployment:"
-                        cat spring-boot-app-manifests/deployment.yml
+                        sed -i "s|image: .*|image: arjunsurya27/spring-boot-app:${BUILD_NUMBER}|g" spring-boot-app-manifests/deployment.yml
 
                         git add spring-boot-app-manifests/deployment.yml
+                        git commit -m "Update java-maven image tag to ${BUILD_NUMBER} [skip ci]" || echo "No changes to commit"
 
-                        git commit \
-                          -m "Update spring-boot image tag to ${BUILD_NUMBER} [skip ci]" \
-                          || echo "No changes to commit"
-
-                        echo "Pushing changes to GitHub..."
-
-                        git push \
-                          https://${GITHUB_USERNAME}:${GITHUB_TOKEN}@github.com/${GIT_USER_NAME}/${GIT_REPO_NAME}.git \
-                          HEAD:main
+                        git push https://${GITHUB_USERNAME}:${GITHUB_TOKEN}@github.com/${GIT_USER_NAME}/${GIT_REPO_NAME}.git HEAD:main
                     '''
                 }
             }
-        }
-    }
-
-    post {
-        success {
-            echo 'Pipeline completed successfully!'
-        }
-
-        failure {
-            echo 'Pipeline failed. Check the stage and command above this message.'
         }
     }
 }
