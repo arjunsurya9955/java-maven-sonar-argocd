@@ -76,7 +76,7 @@ pipeline {
                         git config user.email "arjunsurya027@gmail.com"
                         git config user.name "${GIT_USER_NAME}"
 
-                        sed -i "s|image: .*|image: akmal1076/spring-boot-app:${BUILD_NUMBER}|g" spring-boot-app-manifests/deployment.yml
+                        sed -i "s|image: .*|image: arjunsurya27/spring-boot-app:${BUILD_NUMBER}|g" spring-boot-app-manifests/deployment.yml
 
                         git add spring-boot-app-manifests/deployment.yml
                         git commit -m "Update java-maven image tag to ${BUILD_NUMBER} [skip ci]" || echo "No changes to commit"
