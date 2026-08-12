@@ -80,6 +80,7 @@ pipeline {
                     sh '''
                         echo "Current directory:"
                         pwd
+                        git config --global --add safe.directory "${WORKSPACE}"
 
                         echo "Git status:"
                         git status
